@@ -17,3 +17,6 @@ evidence/
 id_*
 *secret*
 *password*
+outputs/
+outputs_pack/
+*.xlsx

@@ -373,6 +373,36 @@ printf '%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
 say "  Report:   $REPORT"
 say "  Summary:  $BASE/summary.csv  (host,date,item1..6,findings)"
 say "  Evidence: $EVID  (attach these as the Evidence column screenshots)"
+
+# ---------------------------------------------------------------------------
+# Paste-safe transport for the report.
+#
+# Copying the console output above out of a terminal damages it: every line
+# longer than the window is padded to the window width, and that padding lands
+# inside the line rather than starting a new one. "PasswordAuthenticati<pad>on"
+# and "restrict to the<pad>lab subnet" then look identical to a parser, but one
+# needs a space restored and the other does not.
+#
+# Base64 sidesteps it completely, because any wrapping the terminal adds is
+# whitespace that the decoder strips. The block below carries the report and the
+# summary row exactly as written to disk, and is a few KB - small enough to
+# paste into a chat or an email.
+# ---------------------------------------------------------------------------
+if command -v base64 >/dev/null 2>&1 && command -v tar >/dev/null 2>&1; then
+  PACK="$(tar -czf - -C "$BASE" "$(basename "$REPORT")" summary.csv 2>/dev/null \
+          | base64 2>/dev/null | tr -d '\n')"
+  if [ -n "$PACK" ]; then
+    printf '%s\n' "$PACK" > "$BASE/report_pack.b64"
+    echo
+    echo "=== BEGIN REPORT PACK (${HOST}) - copy this whole block ==="
+    # Printed in 100-character rows so it is readable; the decoder ignores the
+    # line breaks, and so does any further wrapping the terminal applies.
+    printf '%s' "$PACK" | fold -w 100
+    echo
+    echo "=== END REPORT PACK (${HOST}) ==="
+    echo "(also saved to $BASE/report_pack.b64)"
+  fi
+fi
 say ""
 say "  Reminder: this script changes nothing. Apply fixes with the remediation"
 say "  guide, then re-run to confirm the status improves."
