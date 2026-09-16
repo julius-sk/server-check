@@ -1,0 +1,4 @@
+# Shell scripts must check out with LF on every platform. A CRLF shebang makes
+# Linux look for an interpreter that does not exist, and the error it gives
+# ("cannot execute: required file not found") does not mention line endings.
+*.sh text eol=lf

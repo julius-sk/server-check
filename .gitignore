@@ -1,0 +1,19 @@
+# The inventory carries public IPs and the admin account name. Neither is a
+# secret on its own, but together with this repo's scripts they describe how to
+# reach a set of internet-facing lab machines, so the file stays local.
+servers.conf
+
+# Collected reports contain account names, login sources, listening ports and
+# shell history excerpts. That is exactly the material the review is meant to
+# keep internal.
+collected/
+secreview/
+*_report_*.txt
+evidence/
+
+# Never commit anything that could hold a credential.
+*.pem
+*.key
+id_*
+*secret*
+*password*
