@@ -210,28 +210,28 @@ A. Key-only SSH authentication  (Medium, every host)
    Undo: set it back to yes and reload. Do not close the working session until a
    new one has been opened successfully.
 
-B. NFS / rpcbind on all interfaces  (Medium: solab-gnr4 111+2049, amd4 111, solab-x1 111)
+B. NFS / rpcbind on all interfaces  (Medium; ports 111 and 2049)
      cat /etc/exports          # check every entry is scoped to the lab subnet
      sudo exportfs -v          # confirm root_squash, no wildcard host
    Then firewall 111 and 2049 to the lab subnet. Check for live mounts first:
      showmount -a localhost
 
-C. Unauthenticated metrics and dashboards  (Medium: 9100 on amd3/amd4/solab-x1,
-   3000 and 9090 on solab-x1)
+C. Unauthenticated metrics and dashboards  (Medium; node_exporter 9100,
+   Prometheus 9090, Grafana 3000)
      sudo ss -ltnp 'sport = :9100'        # identify the container
      sudo docker ps --format '{{.Names}}\t{{.Ports}}'
    Fix in the compose file by binding to localhost, e.g. "127.0.0.1:9100:9100",
    then recreate the container. Grafana on 3000 additionally needs a real
    admin password.
 
-D. Web applications open to all interfaces  (High: 5000 on solab-s1, 8080 on solab-s2)
-     sudo ss -ltnp 'sport = :5000'        # or :8080
+D. Web applications open to all interfaces  (High; e.g. Flask on 5000, 8080)
+     sudo ss -ltnp 'sport = :5000'        # substitute the port the audit named
    Put behind a reverse proxy with TLS and authentication, or bind to localhost.
 
 E. Shell history that needs an explanation  (Medium, every host)
    Read evidence/06_history.txt and record why each flagged command was run.
-   solab-x1 also has 'curl --insecure ... | bash' and hand-added authorized_keys
-   entries that were already findings in the August review.
+   Watch in particular for 'curl --insecure ... | bash' and hand-added
+   authorized_keys entries, both of which were findings in the August review.
 
 F. Empty GECOS fields  (Low, every host)
      sudo chfn -f "Full Name, Affiliation" <user>
