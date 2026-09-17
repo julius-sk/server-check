@@ -197,8 +197,18 @@ def canonical(text):
     return text
 
 
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
 def unwrap(text):
-    """Rejoin terminal-wrapped lines and collapse padding whitespace."""
+    """Rejoin terminal-wrapped lines and collapse padding whitespace.
+
+    Colour codes are stripped first. The audit script writes the report with tee
+    while stdout is a terminal, so the saved file carries the escape sequences
+    too; left in place they break line-start detection (a line beginning with an
+    escape does not start with "[WARN]") and openpyxl refuses to write them.
+    """
+    text = ANSI.sub("", text)
     out = []
     for raw in text.splitlines():
         line = raw.rstrip()

@@ -57,7 +57,10 @@ C_OK=$'\033[32m'; C_WARN=$'\033[33m'; C_BAD=$'\033[31m'; C_H=$'\033[1m'; C_0=$'\
 declare -A ST      # per-item status: O / T (triangle) / X
 declare -a NOTES   # findings, prefixed with item number
 
-say()  { printf '%s\n' "$*" | tee -a "$REPORT"; }
+# Colour goes to the screen, never to the file. tee would otherwise copy the
+# escape sequences into the report, where they break any later parsing and are
+# rejected outright by spreadsheet writers.
+say()  { printf '%s\n' "$*"; printf '%s\n' "$*" | sed 's/\x1b\[[0-9;]*[A-Za-z]//g' >> "$REPORT"; }
 hdr()  { say ""; say "${C_H}=== $* ===${C_0}"; }
 ok()   { say "  ${C_OK}[OK]${C_0}   $*"; }
 warn() { say "  ${C_WARN}[WARN]${C_0} $*"; NOTES+=("$1"); }
