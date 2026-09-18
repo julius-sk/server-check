@@ -21,8 +21,11 @@ outputs/
 outputs_pack/
 *.xlsx
 
-# The opencode tarball is a 60 MB vendored binary. It is fetched from the
-# upstream release or copied in by hand; setup-opencode.sh looks for it next to
-# itself, so keeping it out of git costs nothing and keeps the clone small.
+# opencode-linux-x64.tar.gz is vendored on purpose. The release URL in
+# setup-opencode.sh is correct, but release assets are served from
+# objects.githubusercontent.com, which the lab network blocks even where
+# git clone over github.com works. Shipping the binary in the repo is what
+# makes "clone and run" true on those hosts. Any OTHER tarball stays out.
 *.tar.gz
+!opencode-linux-x64.tar.gz
 __pycache__/

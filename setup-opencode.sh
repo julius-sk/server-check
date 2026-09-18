@@ -10,9 +10,15 @@
 #
 # Binary lookup order:
 #   1. --tarball PATH
-#   2. opencode-linux-x64.tar.gz next to this script
+#   2. opencode-linux-x64.tar.gz next to this script   <- the normal path
 #   3. already-installed ~/.opencode/bin/opencode
-#   4. download from GitHub (often blocked on the lab network)
+#   4. download from GitHub                            <- last resort, usually fails here
+#
+# Step 2 is why the tarball is committed alongside this script: the release URL
+# in step 4 is correct, but GitHub serves release assets from
+# objects.githubusercontent.com, which the lab network blocks even on hosts
+# where git clone over github.com works. After a clone the tarball is already
+# in place and no download is attempted.
 # =============================================================================
 set -euo pipefail
 
@@ -71,7 +77,9 @@ if [ "$CONFIG_ONLY" -eq 0 ]; then
       tar -xzf "$TMP/oc.tar.gz" -C "$BIN_DIR"
       ok "downloaded and extracted"
     else
-      fail "cannot reach GitHub. Copy opencode-linux-x64.tar.gz next to this script (or pass --tarball) and rerun."
+      fail "cannot reach the GitHub release CDN (objects.githubusercontent.com is commonly blocked here).
+    The tarball ships with this repo - if it is missing you have a partial clone.
+    Re-clone, or copy opencode-linux-x64.tar.gz next to this script, or pass --tarball PATH."
     fi
     rm -rf "$TMP"
   fi
