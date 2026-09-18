@@ -10,8 +10,6 @@
 #   2. locks idle / never-used collaborator accounts     (usermod -L + nologin)
 #   3. sets password expiry on every account that stays  (chage -M 180 -W 14)
 #   4. extends btmp / wtmp retention to 12 months        (logrotate)
-#   5. turns on shell history timestamps and retention   (/etc/profile.d)
-#   6. installs fail2ban for the SSH port                (if absent)
 #
 # WHAT IT REFUSES TO CHANGE, and why:
 #   - sshd_config (PasswordAuthentication, PermitRootLogin). Getting this wrong
@@ -26,6 +24,11 @@
 #     whoever owns the stack.
 #   Each of these is printed with the command to run, so nothing is lost -- it
 #   is just not done behind your back.
+#
+# NOT covered, on purpose: locking an account disables its PASSWORD. If the
+# account also has an authorized_keys file, key login still works. Check with
+#   sudo find /home -name authorized_keys -exec ls -la {} \;
+# and remove or rename the file for anyone whose access is meant to end.
 #
 # SAFETY RULES BUILT IN:
 #   - the administrator account is never locked
@@ -114,10 +117,6 @@ for u in $USERS; do
     run "usermod -L '$u'"
     run "usermod -s /usr/sbin/nologin '$u'"
     run "chage -E 0 '$u'"
-    if [ -f "/home/$u/.ssh/authorized_keys" ]; then
-      run "mv '/home/$u/.ssh/authorized_keys' '/home/$u/.ssh/authorized_keys.disabled'"
-      echo "       SSH keys disabled too - a locked password alone does not stop key login"
-    fi
     LOCKED="$LOCKED $u"
     echo "       undo: usermod -U $u; chage -E -1 $u; usermod -s /bin/bash $u"
   fi
@@ -138,7 +137,7 @@ for u in $USERS; do
 done
 echo
 
-# --- 4. log retention (Medium finding, every host) --------------------------
+# --- 4. log retention (Low finding, but it is why item 5 carries no assurance) --
 echo "[4] Log retention - the review found 5 to 15 days, short of the audit period"
 for f in /etc/logrotate.d/btmp /etc/logrotate.d/wtmp; do
   [ -f "$f" ] || continue
@@ -151,52 +150,6 @@ for f in /etc/logrotate.d/btmp /etc/logrotate.d/wtmp; do
   fi
 done
 echo "  note: auth.log rotates via /etc/logrotate.d/rsyslog - review that separately"
-echo
-
-# --- 5. shell history evidence (Low, but one line) --------------------------
-echo "[5] Shell history timestamps"
-if [ -f /etc/profile.d/99-history.sh ]; then
-  echo "  already configured"
-elif ask "enable HISTTIMEFORMAT and a 10k history for all users?"; then
-  if [ "$DRY" -eq 1 ]; then
-    echo "     DRY-RUN: would write /etc/profile.d/99-history.sh"
-  else
-    cat > /etc/profile.d/99-history.sh <<'PROF'
-export HISTTIMEFORMAT="%F %T "
-export HISTSIZE=10000
-export HISTFILESIZE=20000
-shopt -s histappend
-export PROMPT_COMMAND="history -a"
-PROF
-    chmod 644 /etc/profile.d/99-history.sh
-    echo "     done - applies to new logins"
-    echo "       undo: rm /etc/profile.d/99-history.sh"
-  fi
-fi
-echo
-
-# --- 6. fail2ban ------------------------------------------------------------
-echo "[6] Brute-force protection"
-if systemctl is-active --quiet fail2ban 2>/dev/null; then
-  echo "  fail2ban already running"
-elif ask "install and enable fail2ban on port ${SSH_PORT}?"; then
-  if [ "$DRY" -eq 1 ]; then
-    echo "     DRY-RUN: would apt-get install fail2ban and write a jail for port ${SSH_PORT}"
-  else
-    DEBIAN_FRONTEND=noninteractive apt-get install -y fail2ban >/dev/null 2>&1
-    cat > /etc/fail2ban/jail.d/sshd.local <<EOF
-[sshd]
-enabled  = true
-port     = ${SSH_PORT}
-maxretry = 5
-findtime = 10m
-bantime  = 1h
-EOF
-    systemctl enable --now fail2ban >/dev/null 2>&1
-    fail2ban-client status sshd 2>/dev/null || echo "     check: systemctl status fail2ban"
-    echo "       undo: rm /etc/fail2ban/jail.d/sshd.local; systemctl restart fail2ban"
-  fi
-fi
 echo
 
 # --- what this script will not do -------------------------------------------
