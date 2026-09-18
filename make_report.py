@@ -395,6 +395,65 @@ def classify(text):
     return "Needs review.", "Low", "Assess and record the outcome."
 
 
+
+# ---- projected remediation (fix_20260917.sh) --------------------------------
+# What the fix script provably clears, keyed to the step that clears it. Anything
+# not listed here survives: the script is deliberately narrow, and a projection
+# that quietly retired findings nobody touched would be worse than no projection.
+CLEARED_BY = [
+    (r"^4: account\(s\) never logged in but still enabled",
+     "step 2 - usermod -L, usermod -s nologin, chage -E 0"),
+    (r"^4: account\(s\) idle for more than \d+ days",
+     "step 2 - usermod -L, usermod -s nologin, chage -E 0"),
+    (r"^4: account '.+' has no password expiry set",
+     "step 3 - chage -M 180 -W 14 (locked accounts: moot, account already disabled)"),
+]
+
+# Findings the script touches but does NOT clear on a re-run, with the reason.
+# btmp retention is the trap: 'rotate 12' changes how long logs will be kept from
+# now on, but the audit measures retention from the oldest record actually in the
+# file, and that only grows with time. Re-running tomorrow still reports ~5-15
+# days. It clears itself around March 2027, not today.
+NOT_YET = [
+    (r"^5: btmp only covers",
+     "step 4 raised logrotate to 12 months, but coverage is measured from the "
+     "oldest record present and grows only with elapsed time"),
+]
+
+
+def project(d):
+    """Return (projected_host, changelog) assuming every fix step was accepted."""
+    import copy
+    out = copy.deepcopy(d)
+    log = []
+    kept = []
+    for f in d["findings"]:
+        for rx, how in CLEARED_BY:
+            if re.match(rx, f):
+                log.append(("cleared", f, how))
+                break
+        else:
+            for rx, why in NOT_YET:
+                if re.match(rx, f):
+                    log.append(("not yet", f, why))
+                    break
+            else:
+                log.append(("unchanged", f, "not in the fix script's scope"))
+            kept.append(f)
+    out["findings"] = kept
+    # An item becomes O only when every one of its findings cleared. Items that
+    # keep even one finding keep the status the audit gave them - the projection
+    # never upgrades on partial progress.
+    out["status"] = dict(d["status"])
+    for n in range(1, 7):
+        had = [f for f in d["findings"] if f.startswith("%d:" % n)]
+        now = [f for f in kept if f.startswith("%d:" % n)]
+        if had and not now:
+            out["status"][n] = "O"
+    out["date"] = "%s (projected)" % dt.date.today()
+    return out, log
+
+
 # ---- styling ---------------------------------------------------------------
 H_FILL = PatternFill("solid", fgColor="1F3864")
 H_FONT = Font(bold=True, color="FFFFFF", size=10)
@@ -418,7 +477,7 @@ def header(ws, row, cols):
         cell.fill, cell.font, cell.border, cell.alignment = H_FILL, H_FONT, BOX, CENTER
 
 
-def build(hosts, out):
+def build(hosts, out, projection=None):
     wb = Workbook()
     today = dt.date.today()
 
@@ -426,8 +485,17 @@ def build(hosts, out):
     ws.title = "Summary"
     ws["A1"] = "Server Security Review - Summary (%d servers)" % len(hosts)
     ws["A1"].font = TITLE
-    ws["A2"] = "Review date: %s    Generated from the audit script output by make_report.py" % today
-    ws["A2"].font = SUB
+    if projection:
+        ws["A1"] = ("Server Security Review - PROJECTED after remediation (%d servers)"
+                    % len(hosts))
+        ws["A2"] = ("PROJECTED, NOT MEASURED. Baseline audit 2026-09-16; this sheet shows "
+                    "the state expected after fix_20260917.sh was accepted on every host. "
+                    "Re-run srv_sec_audit_20260827_1730.sh to confirm.")
+        ws["A2"].font = Font(italic=True, size=9, color="C00000")
+    else:
+        ws["A2"] = ("Review date: %s    Generated from the audit script output by "
+                    "make_report.py" % today)
+        ws["A2"].font = SUB
     ws["A3"] = "Status legend:  O = compliant    /    △ = compliant with observations    /    X = non-compliant"
     ws["A3"].font = SUB
     header(ws, 5, ["No", "Category", "Check item"] + [h["host"] for h in hosts] + ["Common issue / note"])
@@ -542,23 +610,70 @@ def build(hosts, out):
         es.column_dimensions[col].width = w
     es.freeze_panes = "A2"
 
+    if projection:
+        remediation_sheet(wb, projection)
     wb.save(out)
     return len(rows)
+
+
+
+def remediation_sheet(wb, projection):
+    """Per-host, per-finding account of what the projection assumes and why."""
+    ws = wb.create_sheet("Remediation 9-17")
+    ws["A1"] = "Projected effect of fix_20260917.sh"
+    ws["A1"].font = TITLE
+    ws["A2"] = ("Every row is an assumption, not an observation. 'cleared' means the fix "
+                "script performs an action that removes this finding from a re-run; "
+                "'not yet' means the action was taken but the audit will still report it; "
+                "'unchanged' means the script deliberately does not touch it.")
+    ws["A2"].font = Font(italic=True, size=9, color="C00000")
+
+    r = 4
+    header(ws, r, ["Host", "Item status 9/16 -> projected", "Outcome", "Finding",
+                   "Why / which step"])
+    r += 1
+    for host, before, after, log in projection:
+        st = "%s  ->  %s" % ("".join(before.get(i, "?") for i in range(1, 7)),
+                             "".join(after.get(i, "?") for i in range(1, 7)))
+        for outcome, finding, why in log:
+            for col, val in enumerate([host, st, outcome, finding, why], 1):
+                c = ws.cell(row=r, column=col, value=val)
+                c.border, c.alignment = BOX, WRAP
+            ws.cell(row=r, column=3).fill = {
+                "cleared": ST_FILL["O"], "not yet": ST_FILL["△"],
+                "unchanged": ST_FILL["X"]}[outcome]
+            r += 1
+        r += 1
+    for col, w in zip("ABCDE", (14, 26, 11, 78, 62)):
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = "A5"
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("indir", nargs="?", default=os.path.join(os.path.dirname(__file__), "outputs"))
     ap.add_argument("-o", "--out")
+    ap.add_argument("--projected", action="store_true",
+                    help="show the state expected after fix_20260917.sh, not the "
+                         "state measured by the audit")
     a = ap.parse_args()
     files = sorted(glob.glob(os.path.join(a.indir, "*.txt")))
     if not files:
         raise SystemExit("no *.txt in %s" % a.indir)
     hosts = [parse(f) for f in files]
+    projection = None
+    if a.projected:
+        measured = hosts
+        hosts, projection = [], []
+        for d in measured:
+            pd, log = project(d)
+            hosts.append(pd)
+            projection.append((d["host"], d["status"], pd["status"], log))
     out = a.out or os.path.join(os.path.dirname(__file__),
-                                "server_security_review_%dservers_%s.xlsx"
-                                % (len(hosts), dt.datetime.now().strftime("%Y%m%d_%H%M")))
-    n = build(hosts, out)
+                                "server_security_review_%dservers_%s%s.xlsx"
+                                % (len(hosts), dt.datetime.now().strftime("%Y%m%d_%H%M"),
+                                   "_projected" if a.projected else ""))
+    n = build(hosts, out, projection)
     for h in hosts:
         print("  %-14s status=%s  findings=%d  accounts=%d  exposed=%d"
               % (h["host"], "".join(h["status"].get(i, "?") for i in range(1, 7)),
