@@ -20,3 +20,9 @@ id_*
 outputs/
 outputs_pack/
 *.xlsx
+
+# The opencode tarball is a 60 MB vendored binary. It is fetched from the
+# upstream release or copied in by hand; setup-opencode.sh looks for it next to
+# itself, so keeping it out of git costs nothing and keeps the clone small.
+*.tar.gz
+__pycache__/
