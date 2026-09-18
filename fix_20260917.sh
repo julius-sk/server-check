@@ -67,7 +67,7 @@ HOST="$(hostname -s 2>/dev/null || hostname)"
 USERS="$(awk -F: '$3>=1000 && $3<65534 {print $1}' /etc/passwd)"
 LOGGED_IN="$(who | awk '{print $1}' | sort -u)"
 
-ask() { [ "$DRY" -eq 1 ] && return 1; [ "$YES" -eq 1 ] && return 0
+ask() { [ "$DRY" -eq 1 ] && { echo "     would ask: $1"; return 1; }; [ "$YES" -eq 1 ] && return 0
         read -rp "  -> $1 [y/N] " a; [ "$a" = "y" ] || [ "$a" = "Y" ]; }
 run() { if [ "$DRY" -eq 1 ]; then echo "     DRY-RUN: $*"; else eval "$@"; fi; }
 
