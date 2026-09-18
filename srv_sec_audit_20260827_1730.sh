@@ -237,8 +237,18 @@ cap 04_idle.txt "lastlog"
 cap 04_idle.txt "lastlog -b $IDLE_DAYS"
 for u in $REG_USERS; do cap 04_idle.txt "$SUDO chage -l $u"; done
 
-IDLE_LIST=""; NEVER_LIST=""
+IDLE_LIST=""; NEVER_LIST=""; LOCKED_LIST=""
 for u in $REG_USERS; do
+  # A locked account is a remediated account. lastlog keeps showing the old
+  # login date for ever, so judging idleness by lastlog alone reports an account
+  # that was correctly disabled as though nothing had been done - and a re-run
+  # after remediation would look identical to the run that prompted it.
+  pwst="$($SUDO passwd -S "$u" 2>/dev/null | awk '{print $2}')"
+  if [ "$pwst" = "L" ]; then
+    LOCKED_LIST="$LOCKED_LIST $u"
+    ok "locked $u - disabled, no action needed"
+    continue
+  fi
   line="$(lastlog -u "$u" 2>/dev/null | tail -n +2)"
   if printf '%s' "$line" | grep -q 'Never logged in'; then
     NEVER_LIST="$NEVER_LIST $u"
@@ -251,6 +261,7 @@ for u in $REG_USERS; do
   exp="$($SUDO chage -l "$u" 2>/dev/null | awk -F: '/Password expires/{print $2}' | xargs)"
   [ "$exp" = "never" ] && warn "4: account '$u' has no password expiry set."
 done
+[ -n "$LOCKED_LIST" ] && info "Locked (excluded from the idle check):$LOCKED_LIST"
 [ -n "$NEVER_LIST" ] && bad "4: account(s) never logged in but still enabled:$NEVER_LIST"
 [ -n "$IDLE_LIST" ]  && bad "4: account(s) idle for more than ${IDLE_DAYS} days:$IDLE_LIST"
 [ -z "$NEVER_LIST" ] && [ -z "$IDLE_LIST" ] && ok "No idle account beyond ${IDLE_DAYS} days."
