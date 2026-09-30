@@ -2,3 +2,4 @@
 # Linux look for an interpreter that does not exist, and the error it gives
 # ("cannot execute: required file not found") does not mention line endings.
 *.sh text eol=lf
+solab-tools/** text eol=lf
